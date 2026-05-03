@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tango Puzzle 邏輯遊戲</title>
+<style>
+:root {
+  --yellow: #f5b800;
+  --yellow-light: #ffd966;
+  --blue: #2563eb;
+  --blue-light: #60a5fa;
+  --bg: #f4f1ea;
+  --card: #ffffff;
+  --border: #cfc8b9;
+  --line: #b8af9b;
+  --text: #2a2a2a;
+  --muted: #6b6b6b;
+  --accent: #1f2937;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: "Microsoft JhengHei", "PingFang TC", -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 1rem;
+}
+.app { max-width: 760px; margin: 0 auto; }
+header {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem; gap: 0.5rem;
+}
+h1 { margin: 0; font-size: 1.4rem; letter-spacing: 1px; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; }
+nav button {
+  padding: 0.5rem 0.9rem; border: 1px solid var(--border);
+  background: var(--card); cursor: pointer; border-radius: 8px;
+  font-size: 0.95rem; color: var(--text); transition: all .15s;
+}
+nav button:hover { background: #ebe6da; }
+nav button.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.tab { display: none; background: var(--card); border-radius: 12px; padding: 1.2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.tab.active { display: block; }
+
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.controls > * { font-size: 0.95rem; }
+select, button.btn, input[type="text"] {
+  padding: 0.5rem 0.9rem; border: 1px solid var(--border);
+  background: white; border-radius: 8px; cursor: pointer; font-size: 0.95rem;
+  font-family: inherit;
+}
+button.btn:hover { background: #f7f3e8; }
+button.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+button.btn.primary:hover { background: #374151; }
+button.btn.danger { background: var(--bad); color: white; border-color: var(--bad); }
+button.btn.danger:hover { background: #b91c1c; }
+
+.timer {
+  margin-left: auto; font-family: "Courier New", monospace;
+  font-size: 1.2rem; font-weight: bold; color: var(--accent);
+  background: white; padding: 0.4rem 0.8rem; border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* Board */
+.board-wrap {
+  display: flex; justify-content: center; padding: 1rem 0;
+}
+.board {
+  --cell: 56px;
+  --gap: 4px;
+  --pad: 8px;
+  --size: 6;
+  display: grid;
+  grid-template-columns: repeat(var(--size), var(--cell));
+  grid-template-rows: repeat(var(--size), var(--cell));
+  gap: var(--gap);
+  background: var(--line);
+  padding: var(--pad);
+  border-radius: 10px;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.board[data-size="8"] { --cell: 44px; }
+.board[data-size="8"] .dot::before { font-size: 1.2rem !important; }
+.cell {
+  background: var(--card);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none;
+  position: relative;
+  transition: background .1s;
+}
+.cell:hover { background: #faf6e8; }
+.cell.locked { background: #efeadf; cursor: not-allowed; }
+.cell.locked:hover { background: #efeadf; }
+.cell.violate { background: #fecaca !important; }
+.dot {
+  width: 70%; height: 70%;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; font-weight: bold;
+}
+.dot.yellow { background: var(--yellow); box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+.dot.blue { background: var(--blue); box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+.dot.yellow::before { content: "☀"; color: #fff; font-size: 1.6rem; line-height: 1; }
+.dot.blue::before { content: "☾"; color: #fff; font-size: 1.4rem; line-height: 1; }
+
+/* Constraints */
+.constraint {
+  position: absolute;
+  width: 22px; height: 22px;
+  background: white; border: 1.5px solid var(--text);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: bold; font-size: 0.85rem;
+  z-index: 5;
+  pointer-events: none;
+  font-family: "Courier New", monospace;
+}
+.constraint.equals { color: var(--accent); }
+.constraint.cross { color: var(--bad); }
+.constraint.editable { pointer-events: auto; cursor: pointer; }
+.constraint.editable:hover { background: #fff7d6; }
+
+/* Edge buttons (editor only) */
+.edge-btn {
+  position: absolute; z-index: 4;
+  background: transparent;
+  cursor: pointer;
+}
+.edge-btn:hover {
+  background: rgba(245,184,0,0.3);
+  border-radius: 4px;
+}
+
+/* Actions */
+.actions {
+  display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.actions button {
+  padding: 0.6rem 1.2rem; font-size: 1rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: white; cursor: pointer;
+  font-family: inherit;
+}
+.actions button:hover { background: #f7f3e8; }
+.actions button.solve { background: #fef3c7; border-color: #f59e0b; }
+.actions button.solve:hover { background: #fde68a; }
+
+#status, #ed-status {
+  text-align: center;
+  margin-top: 0.8rem; min-height: 1.4rem;
+  font-weight: 500;
+}
+.status-ok { color: var(--ok); }
+.status-warn { color: var(--warn); }
+.status-bad { color: var(--bad); }
+
+/* Records / library tables */
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem; margin-bottom: 1rem;
+}
+.stat-card {
+  background: #f7f3e8; padding: 0.8rem;
+  border-radius: 8px; border: 1px solid var(--border);
+}
+.stat-card .label { font-size: 0.85rem; color: var(--muted); }
+.stat-card .value { font-size: 1.4rem; font-weight: bold; margin-top: 0.2rem; }
+table.records {
+  width: 100%; border-collapse: collapse; font-size: 0.92rem;
+}
+table.records th, table.records td {
+  padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);
+}
+table.records th { background: #f7f3e8; }
+table.records tr.completed { color: var(--text); }
+table.records tr.incomplete { color: var(--muted); }
+.empty {
+  text-align: center; color: var(--muted); padding: 2rem;
+  font-style: italic;
+}
+
+/* Editor specific */
+.editor-help {
+  font-size: 0.88rem; color: var(--muted); margin-bottom: 0.5rem;
+  padding: 0.5rem 0.8rem; background: #f7f3e8; border-radius: 6px;
+}
+.mode-row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.mode-row label { cursor: pointer; }
+
+/* Library list */
+.puzzle-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.puzzle-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.7rem; background: #f7f3e8; border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.puzzle-item .info { display: flex; flex-direction: column; }
+.puzzle-item .name { font-weight: 500; }
+.puzzle-item .meta { font-size: 0.85rem; color: var(--muted); }
+.puzzle-item .actions { margin-top: 0; }
+
+/* Loading */
+.loading {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+  vertical-align: middle; margin-right: 0.5rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Modal */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal-bg.show { display: flex; }
+.modal {
+  background: var(--card); padding: 1.5rem; border-radius: 12px;
+  max-width: 400px; width: 90%;
+}
+.modal h3 { margin-top: 0; }
+.modal .actions { justify-content: flex-end; margin-top: 1rem; }
+
+@media (max-width: 600px) {
+  .board { --cell: 46px; }
+  h1 { font-size: 1.2rem; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🌞 Tango Puzzle 🌙</h1>
+    <nav id="nav">
+      <button data-tab="game" class="active">遊戲</button>
+      <button data-tab="editor">編輯器</button>
+      <button data-tab="records">紀錄</button>
+      <button data-tab="library">自製謎題庫</button>
+      <button data-tab="rules">規則</button>
+    </nav>
+  </header>
+
+  <main>
+
+  <!-- Game Tab -->
+  <section id="game-tab" class="tab active">
+    <div class="controls">
+      <label>模式：
+        <select id="difficulty">
+          <option value="hard" selected>困難 (6×6)</option>
+        </select>
+      </label>
+      <button class="btn primary" id="new-game">🎲 新遊戲</button>
+      <span class="timer">⏱ <span id="timer">00:00</span></span>
+    </div>
+    <div class="board-wrap">
+      <div id="game-board" class="board"></div>
+    </div>
+    <div class="actions">
+      <button id="undo">↶ UNDO</button>
+      <button id="reset">⟲ RESET</button>
+      <button class="solve" id="solve">💡 顯示答案</button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <!-- Editor Tab -->
+  <section id="editor-tab" class="tab">
+    <div class="editor-help">
+      <strong>編輯器使用說明：</strong><br>
+      • <b>預填模式</b>：左鍵點格子→黃，右鍵→藍，再次點擊→空<br>
+      • <b>約束模式</b>：先選 = 或 X，然後點兩格之間的「縫隙」加上約束（再點同類型可移除）<br>
+      • 輸入完按「驗證」確認是否唯一解 + 純邏輯可解
+    </div>
+    <div class="controls">
+      <div class="mode-row">
+        <label><input type="radio" name="ed-mode" value="prefill" checked> 預填格</label>
+        <label><input type="radio" name="ed-mode" value="constraint"> 加約束</label>
+        <label>類型：
+          <select id="ed-con-type">
+            <option value="=">= (同色)</option>
+            <option value="X">X (異色)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="board-wrap">
+      <div id="editor-board" class="board"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="ed-validate">🔍 驗證</button>
+      <button class="btn" id="ed-clear">清空</button>
+      <button class="btn" id="ed-save">💾 儲存</button>
+      <button class="btn" id="ed-test-play">▶ 試玩</button>
+    </div>
+    <div id="ed-status"></div>
+  </section>
+
+  <!-- Records Tab -->
+  <section id="records-tab" class="tab">
+    <div id="records-stats"></div>
+    <h3>遊玩紀錄</h3>
+    <div id="records-list"></div>
+    <div class="actions" style="margin-top: 1rem;">
+      <button class="btn danger" id="clear-records">🗑 清除所有紀錄</button>
+    </div>
+  </section>
+
+  <!-- Library Tab -->
+  <section id="library-tab" class="tab">
+    <h3>自製謎題庫</h3>
+    <div id="library-list"></div>
+  </section>
+
+  <!-- Rules Tab -->
+  <section id="rules-tab" class="tab">
+    <h3>遊戲規則</h3>
+    <ol style="line-height: 1.8;">
+      <li>棋盤為 6×6 方格，每格放置 ☀ 黃色（太陽）或 ☾ 藍色（月亮）。</li>
+      <li>每一行、每一列必須恰好有 <b>3 黃 3 藍</b>。</li>
+      <li><b>同色最多連續 2 格</b>，不能出現連續 3 個相同顏色。</li>
+      <li><b>=</b> 符號連接的兩格必須<b>同色</b>。</li>
+      <li><b>X</b> 符號連接的兩格必須<b>異色</b>。</li>
+      <li>每個謎題都有<b>唯一解</b>，且可以透過邏輯推理解出（不需要猜）。</li>
+    </ol>
+    <h3>操作方式</h3>
+    <ul style="line-height: 1.8;">
+      <li>點一下格子 → 黃色 ☀</li>
+      <li>再點一下 → 藍色 ☾</li>
+      <li>再點一下 → 清空</li>
+      <li>UNDO：撤銷上一步</li>
+      <li>RESET：重設所有自填格</li>
+      <li>顯示答案：直接看到完整答案（紀錄會標記為「已查看解答」）</li>
+    </ul>
+  </section>
+
+  </main>
+</div>
+
+<!-- Modal -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h3 id="modal-title">提示</h3>
+    <p id="modal-body"></p>
+    <input type="text" id="modal-input" style="display:none; width: 100%; margin-top: 0.5rem;">
+    <div class="actions">
+      <button class="btn" id="modal-cancel">取消</button>
+      <button class="btn primary" id="modal-ok">確定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 1. CONSTANTS & UTILITIES
+// ============================================================
+const SIZE = 6;
+const EMPTY = 0, YELLOW = 1, BLUE = 2;
+
+const opposite = c => c === YELLOW ? BLUE : YELLOW;
+
+function makeBoard(prefilled) {
+  const b = Array.from({length: SIZE}, () => Array(SIZE).fill(EMPTY));
+  if (prefilled) for (const p of prefilled) b[p.r][p.c] = p.color;
+  return b;
+}
+function cloneBoard(b) { return b.map(r => [...r]); }
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+function formatTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+// ============================================================
+// 2. CONSTRAINT VALIDATION (partial board)
+// ============================================================
+function isValidPartial(board, constraints) {
+  // rows
+  for (let r = 0; r < SIZE; r++) {
+    let y = 0, b = 0;
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] === YELLOW) y++;
+      else if (board[r][c] === BLUE) b++;
+    }
+    if (y > 3 || b > 3) return false;
+    for (let c = 0; c <= SIZE - 3; c++) {
+      const v = board[r][c];
+      if (v !== EMPTY && v === board[r][c+1] && v === board[r][c+2]) return false;
+    }
+  }
+  // cols
+  for (let c = 0; c < SIZE; c++) {
+    let y = 0, b = 0;
+    for (let r = 0; r < SIZE; r++) {
+      if (board[r][c] === YELLOW) y++;
+      else if (board[r][c] === BLUE) b++;
+    }
+    if (y > 3 || b > 3) return false;
+    for (let r = 0; r <= SIZE - 3; r++) {
+      const v = board[r][c];
+      if (v !== EMPTY && v === board[r+1][c] && v === board[r+2][c]) return false;
+    }
+  }
+  // constraints
+  for (const con of constraints) {
+    const v1 = board[con.r1][con.c1];
+    const v2 = board[con.r2][con.c2];
+    if (v1 !== EMPTY && v2 !== EMPTY) {
+      if (con.type === '=' && v1 !== v2) return false;
+      if (con.type === 'X' && v1 === v2) return false;
+    }
+  }
+  return true;
+}
+
+// ============================================================
+// 3. BACKTRACKING SOLVER (uniqueness check)
+// ============================================================
+function countSolutions(initial, constraints, max = 2) {
+  const board = cloneBoard(initial);
+  let count = 0;
+  let firstSolution = null;
+
+  function backtrack() {
+    if (count >= max) return;
+    let r = -1, c = -1;
+    outer:
+    for (let i = 0; i < SIZE; i++) {
+      for (let j = 0; j < SIZE; j++) {
+        if (board[i][j] === EMPTY) { r = i; c = j; break outer; }
+      }
+    }
+    if (r === -1) {
+      count++;
+      if (count === 1) firstSolution = cloneBoard(board);
+      return;
+    }
+    for (const color of [YELLOW, BLUE]) {
+      board[r][c] = color;
+      if (isValidPartial(board, constraints)) backtrack();
+      board[r][c] = EMPTY;
+      if (count >= max) return;
+    }
+  }
+  backtrack();
+  return { count, solution: firstSolution };
+}
+
+// ============================================================
+// 4. LOGIC SOLVER (rules R1-R6)
+// ============================================================
+// Pre-compute all valid 6-cell rows: 3 yellow, 3 blue, no 3-in-a-row
+const ALL_LINES = (() => {
+  const result = [];
+  for (let mask = 0; mask < (1 << SIZE); mask++) {
+    const row = [];
+    let yc = 0;
+    for (let i = 0; i < SIZE; i++) {
+      if ((mask >> i) & 1) { row.push(YELLOW); yc++; }
+      else row.push(BLUE);
+    }
+    if (yc !== 3) continue;
+    let bad = false;
+    for (let i = 0; i <= SIZE - 3; i++) {
+      if (row[i] === row[i+1] && row[i] === row[i+2]) { bad = true; break; }
+    }
+    if (!bad) result.push(row);
+  }
+  return result; // 14 entries
+})();
+
+function hasThreeInRowAt(board, r, c) {
+  const v = board[r][c];
+  if (v === EMPTY) return false;
+  for (let i = Math.max(0, c - 2); i <= Math.min(SIZE - 3, c); i++) {
+    if (board[r][i] === v && board[r][i+1] === v && board[r][i+2] === v) return true;
+  }
+  for (let i = Math.max(0, r - 2); i <= Math.min(SIZE - 3, r); i++) {
+    if (board[i][c] === v && board[i+1][c] === v && board[i+2][c] === v) return true;
+  }
+  return false;
+}
+
+function refineByLine(board, constraints, isRow, idx) {
+  // Returns { changed, contradiction }
+  const current = [];
+  for (let k = 0; k < SIZE; k++) {
+    current.push(isRow ? board[idx][k] : board[k][idx]);
+  }
+  const lineCons = constraints.filter(con => {
+    if (isRow) return con.r1 === idx && con.r2 === idx;
+    return con.c1 === idx && con.c2 === idx;
+  });
+  const candidates = ALL_LINES.filter(row => {
+    for (let k = 0; k < SIZE; k++) {
+      if (current[k] !== EMPTY && current[k] !== row[k]) return false;
+    }
+    for (const con of lineCons) {
+      const k1 = isRow ? con.c1 : con.r1;
+      const k2 = isRow ? con.c2 : con.r2;
+      if (con.type === '=' && row[k1] !== row[k2]) return false;
+      if (con.type === 'X' && row[k1] === row[k2]) return false;
+    }
+    return true;
+  });
+  if (candidates.length === 0) return { changed: false, contradiction: true };
+  let changed = false;
+  for (let k = 0; k < SIZE; k++) {
+    if (current[k] !== EMPTY) continue;
+    let allSame = true, first = candidates[0][k];
+    for (const cand of candidates) {
+      if (cand[k] !== first) { allSame = false; break; }
+    }
+    if (allSame) {
+      if (isRow) board[idx][k] = first;
+      else board[k][idx] = first;
+      changed = true;
+    }
+  }
+  return { changed, contradiction: false };
+}
+
+function solveLogically(initial, constraints) {
+  const board = cloneBoard(initial);
+  if (!isValidPartial(board, constraints)) {
+    return { solved: false, board, contradiction: true };
+  }
+  let changed = true, iter = 0;
+  while (changed && iter < 200) {
+    changed = false; iter++;
+
+    // R1: row/col counts (if 3 of one color, fill rest with other)
+    for (let r = 0; r < SIZE; r++) {
+      let y = 0, b = 0;
+      for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] === YELLOW) y++; else if (board[r][c] === BLUE) b++;
+      }
+      if (y === 3) for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] === EMPTY) { board[r][c] = BLUE; changed = true; }
+      }
+      if (b === 3) for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] === EMPTY) { board[r][c] = YELLOW; changed = true; }
+      }
+    }
+    for (let c = 0; c < SIZE; c++) {
+      let y = 0, b = 0;
+      for (let r = 0; r < SIZE; r++) {
+        if (board[r][c] === YELLOW) y++; else if (board[r][c] === BLUE) b++;
+      }
+      if (y === 3) for (let r = 0; r < SIZE; r++) {
+        if (board[r][c] === EMPTY) { board[r][c] = BLUE; changed = true; }
+      }
+      if (b === 3) for (let r = 0; r < SIZE; r++) {
+        if (board[r][c] === EMPTY) { board[r][c] = YELLOW; changed = true; }
+      }
+    }
+
+    // R2 + R3: avoid 3-in-a-row
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] !== EMPTY) continue;
+        let mustNotY = false, mustNotB = false;
+        board[r][c] = YELLOW;
+        if (hasThreeInRowAt(board, r, c)) mustNotY = true;
+        board[r][c] = BLUE;
+        if (hasThreeInRowAt(board, r, c)) mustNotB = true;
+        board[r][c] = EMPTY;
+        if (mustNotY && mustNotB) return { solved: false, board, contradiction: true };
+        if (mustNotY) { board[r][c] = BLUE; changed = true; }
+        else if (mustNotB) { board[r][c] = YELLOW; changed = true; }
+      }
+    }
+
+    // R4 + R5: constraint propagation
+    for (const con of constraints) {
+      const v1 = board[con.r1][con.c1];
+      const v2 = board[con.r2][con.c2];
+      if (v1 !== EMPTY && v2 === EMPTY) {
+        board[con.r2][con.c2] = con.type === '=' ? v1 : opposite(v1);
+        changed = true;
+      } else if (v2 !== EMPTY && v1 === EMPTY) {
+        board[con.r1][con.c1] = con.type === '=' ? v2 : opposite(v2);
+        changed = true;
+      } else if (v1 !== EMPTY && v2 !== EMPTY) {
+        if (con.type === '=' && v1 !== v2) return { solved: false, board, contradiction: true };
+        if (con.type === 'X' && v1 === v2) return { solved: false, board, contradiction: true };
+      }
+    }
+
+    // R6: line enumeration (the strongest rule)
+    for (let r = 0; r < SIZE; r++) {
+      const res = refineByLine(board, constraints, true, r);
+      if (res.contradiction) return { solved: false, board, contradiction: true };
+      if (res.changed) changed = true;
+    }
+    for (let c = 0; c < SIZE; c++) {
+      const res = refineByLine(board, constraints, false, c);
+      if (res.contradiction) return { solved: false, board, contradiction: true };
+      if (res.changed) changed = true;
+    }
+  }
+
+  let solved = true;
+  for (let r = 0; r < SIZE && solved; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] === EMPTY) { solved = false; break; }
+    }
+  }
+  return { solved, board };
+}
+
+// ============================================================
+// 5. PUZZLE GENERATOR
+// ============================================================
+function generateFullSolution() {
+  const board = Array.from({length: SIZE}, () => Array(SIZE).fill(EMPTY));
+  function fill(idx) {
+    if (idx === SIZE * SIZE) return true;
+    const r = Math.floor(idx / SIZE), c = idx % SIZE;
+    const colors = Math.random() < 0.5 ? [YELLOW, BLUE] : [BLUE, YELLOW];
+    for (const color of colors) {
+      board[r][c] = color;
+      if (isValidPartial(board, [])) {
+        if (fill(idx + 1)) return true;
+      }
+      board[r][c] = EMPTY;
+    }
+    return false;
+  }
+  fill(0);
+  return board;
+}
+
+function isLogicallySolvable(prefilled, constraints, expectedSolution) {
+  const initial = makeBoard(prefilled);
+  const result = solveLogically(initial, constraints);
+  if (!result.solved) return false;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (result.board[r][c] !== expectedSolution[r][c]) return false;
+    }
+  }
+  return true;
+}
+
+function generate(difficulty = 'medium') {
+  // Difficulty target: total hints (prefilled + constraints) range
+  const targets = {
+    easy:   { min: 18, max: 26 },
+    medium: { min: 11, max: 17 },
+    hard:   { min: 6,  max: 11 },
+  };
+  const target = targets[difficulty] || targets.medium;
+  let lastValid = null;
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const solution = generateFullSolution();
+
+    // Build all candidate constraints (from adjacent cells in the solution)
+    const allCons = [];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (c < SIZE - 1) {
+          const same = solution[r][c] === solution[r][c+1];
+          allCons.push({ r1: r, c1: c, r2: r, c2: c+1, type: same ? '=' : 'X' });
+        }
+        if (r < SIZE - 1) {
+          const same = solution[r][c] === solution[r+1][c];
+          allCons.push({ r1: r, c1: c, r2: r+1, c2: c, type: same ? '=' : 'X' });
+        }
+      }
+    }
+    const allPre = [];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        allPre.push({ r, c, color: solution[r][c] });
+      }
+    }
+
+    // Start with everything in, randomly remove what's removable
+    let prefilled = [...allPre];
+    let constraints = [...allCons];
+    const items = [
+      ...allPre.map(p => ({ k: 'p', v: p })),
+      ...allCons.map(c => ({ k: 'c', v: c }))
+    ];
+    shuffle(items);
+    for (const it of items) {
+      if (it.k === 'p') {
+        const idx = prefilled.indexOf(it.v);
+        if (idx === -1) continue;
+        prefilled.splice(idx, 1);
+        if (!isLogicallySolvable(prefilled, constraints, solution)) prefilled.push(it.v);
+      } else {
+        const idx = constraints.indexOf(it.v);
+        if (idx === -1) continue;
+        constraints.splice(idx, 1);
+        if (!isLogicallySolvable(prefilled, constraints, solution)) constraints.push(it.v);
+      }
+    }
+
+    let total = prefilled.length + constraints.length;
+
+    // Add back hints if too few (for easy/medium)
+    if (total < target.min) {
+      const usedPre = new Set(prefilled.map(p => `${p.r},${p.c}`));
+      const usedCon = new Set(constraints.map(c => `${c.r1},${c.c1},${c.r2},${c.c2}`));
+      const extras = [
+        ...allPre.filter(p => !usedPre.has(`${p.r},${p.c}`)).map(v => ({ k: 'p', v })),
+        ...allCons.filter(c => !usedCon.has(`${c.r1},${c.c1},${c.r2},${c.c2}`)).map(v => ({ k: 'c', v }))
+      ];
+      shuffle(extras);
+      while (total < target.min && extras.length) {
+        const it = extras.pop();
+        if (it.k === 'p') prefilled.push(it.v); else constraints.push(it.v);
+        total++;
+      }
+    }
+
+    // If too many, accept anyway (means puzzle is naturally easy)
+    // Verify uniqueness via backtracking solver as a double-check
+    const verify = countSolutions(makeBoard(prefilled), constraints, 2);
+    if (verify.count !== 1) continue;
+
+    // Save as fallback even if difficulty range doesn't match
+    lastValid = { prefilled, constraints, solution, difficulty };
+
+    // Check difficulty range
+    if (total >= target.min && total <= target.max + 6) {
+      return lastValid;
+    }
+    // Otherwise try again for a better-fit puzzle
+  }
+
+  // Fallback: any valid puzzle we found, even if outside ideal range
+  if (lastValid) return lastValid;
+  // Absolute last resort (extremely rare): minimal puzzle from a fresh solution
+  const sol = generateFullSolution();
+  const allCons = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (c < SIZE-1) allCons.push({ r1: r, c1: c, r2: r, c2: c+1, type: sol[r][c]===sol[r][c+1] ? '=' : 'X' });
+    if (r < SIZE-1) allCons.push({ r1: r, c1: c, r2: r+1, c2: c, type: sol[r][c]===sol[r+1][c] ? '=' : 'X' });
+  }
+  return { prefilled: [], constraints: allCons, solution: sol, difficulty };
+}
+
+// ============================================================
+// 6. STORAGE
+// ============================================================
+const Storage = {
+  KEY: 'tango-data-v1',
+  CURRENT_KEY: 'tango-current-v1',
+  load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { version: 1, customPuzzles: [], records: [], settings: {} };
+  },
+  save(data) { localStorage.setItem(this.KEY, JSON.stringify(data)); },
+  addRecord(record) {
+    const data = this.load();
+    data.records.unshift({ id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2,6), ...record });
+    if (data.records.length > 500) data.records = data.records.slice(0, 500);
+    this.save(data);
+    return data.records[0];
+  },
+  getRecords() { return this.load().records; },
+  getRecord(id) { return this.load().records.find(r => r.id === id); },
+  clearRecords() {
+    const d = this.load(); d.records = []; this.save(d);
+  },
+  addCustomPuzzle(puzzle) {
+    const data = this.load();
+    data.customPuzzles.unshift(puzzle);
+    this.save(data);
+  },
+  getCustomPuzzles() { return this.load().customPuzzles; },
+  deleteCustomPuzzle(id) {
+    const d = this.load();
+    d.customPuzzles = d.customPuzzles.filter(p => p.id !== id);
+    this.save(d);
+  },
+  getSetting(k, def) {
+    return this.load().settings[k] ?? def;
+  },
+  setSetting(k, v) {
+    const d = this.load(); d.settings[k] = v; this.save(d);
+  },
+  // Current in-progress game (auto-resume across browser restarts)
+  saveCurrentGame(state) {
+    try { localStorage.setItem(this.CURRENT_KEY, JSON.stringify(state)); } catch (e) {}
+  },
+  loadCurrentGame() {
+    try {
+      const raw = localStorage.getItem(this.CURRENT_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  },
+  clearCurrentGame() { localStorage.removeItem(this.CURRENT_KEY); }
+};
+
+// ============================================================
+// 7. MODAL HELPERS
+// ============================================================
+function showModal({ title = '提示', body = '', input = false, defaultValue = '', onOk, onCancel }) {
+  const bg = document.getElementById('modal-bg');
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body;
+  const inp = document.getElementById('modal-input');
+  if (input) {
+    inp.style.display = 'block';
+    inp.value = defaultValue;
+    setTimeout(() => inp.focus(), 50);
+  } else {
+    inp.style.display = 'none';
+  }
+  bg.classList.add('show');
+  const ok = document.getElementById('modal-ok');
+  const cancel = document.getElementById('modal-cancel');
+  const close = (val) => {
+    bg.classList.remove('show');
+    ok.onclick = null; cancel.onclick = null;
+  };
+  ok.onclick = () => {
+    const val = input ? inp.value : true;
+    close();
+    if (onOk) onOk(val);
+  };
+  cancel.onclick = () => {
+    close();
+    if (onCancel) onCancel();
+  };
+}
+
+// ============================================================
+// 8. BOARD RENDERING
+// ============================================================
+function renderBoard(container, opts) {
+  container.innerHTML = '';
+  const { board, locked, constraints, violations, onCellClick, onCellContext, editorMode, onEdgeClick } = opts;
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      if (locked && locked[r][c]) cell.classList.add('locked');
+      if (violations && violations[r][c]) cell.classList.add('violate');
+      if (board[r][c] === YELLOW) {
+        const dot = document.createElement('div');
+        dot.className = 'dot yellow';
+        cell.appendChild(dot);
+      } else if (board[r][c] === BLUE) {
+        const dot = document.createElement('div');
+        dot.className = 'dot blue';
+        cell.appendChild(dot);
+      }
+      if (onCellClick) cell.addEventListener('click', e => onCellClick(r, c, e));
+      if (onCellContext) cell.addEventListener('contextmenu', e => { e.preventDefault(); onCellContext(r, c, e); });
+      container.appendChild(cell);
+    }
+  }
+
+  // Render constraints
+  for (const con of constraints) {
+    const sym = document.createElement('div');
+    sym.className = 'constraint ' + (con.type === '=' ? 'equals' : 'cross');
+    sym.textContent = con.type;
+    if (editorMode === 'constraint') sym.classList.add('editable');
+    const isHoriz = con.r1 === con.r2;
+    const row = (con.r1 + con.r2) / 2;
+    const col = (con.c1 + con.c2) / 2;
+    // Position relative to grid: padding(8) + cellIdx*(cell+gap) + cell/2
+    // cell = 56, gap = 4
+    if (isHoriz) {
+      sym.style.top = `calc(8px + ${con.r1} * (var(--cell) + var(--gap)) + var(--cell) / 2 - 11px)`;
+      sym.style.left = `calc(8px + ${con.c1} * (var(--cell) + var(--gap)) + var(--cell) - 11px + var(--gap) / 2)`;
+    } else {
+      sym.style.top = `calc(8px + ${con.r1} * (var(--cell) + var(--gap)) + var(--cell) - 11px + var(--gap) / 2)`;
+      sym.style.left = `calc(8px + ${con.c1} * (var(--cell) + var(--gap)) + var(--cell) / 2 - 11px)`;
+    }
+    if (editorMode === 'constraint' && onEdgeClick) {
+      sym.addEventListener('click', e => onEdgeClick(con.r1, con.c1, con.r2, con.c2));
+    }
+    container.appendChild(sym);
+  }
+
+  // Editor: edge buttons for adding new constraints
+  if (editorMode === 'constraint' && onEdgeClick) {
+    const existing = new Set(constraints.map(c => `${c.r1},${c.c1},${c.r2},${c.c2}`));
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (c < SIZE - 1) {
+          const key = `${r},${c},${r},${c+1}`;
+          if (!existing.has(key)) {
+            const btn = document.createElement('div');
+            btn.className = 'edge-btn';
+            btn.style.top = `calc(8px + ${r} * (var(--cell) + var(--gap)) + var(--cell) / 2 - 11px)`;
+            btn.style.left = `calc(8px + ${c} * (var(--cell) + var(--gap)) + var(--cell) - 11px + var(--gap) / 2)`;
+            btn.style.width = '22px'; btn.style.height = '22px';
+            btn.title = '加約束';
+            btn.addEventListener('click', () => onEdgeClick(r, c, r, c+1));
+            container.appendChild(btn);
+          }
+        }
+        if (r < SIZE - 1) {
+          const key = `${r},${c},${r+1},${c}`;
+          if (!existing.has(key)) {
+            const btn = document.createElement('div');
+            btn.className = 'edge-btn';
+            btn.style.top = `calc(8px + ${r} * (var(--cell) + var(--gap)) + var(--cell) - 11px + var(--gap) / 2)`;
+            btn.style.left = `calc(8px + ${c} * (var(--cell) + var(--gap)) + var(--cell) / 2 - 11px)`;
+            btn.style.width = '22px'; btn.style.height = '22px';
+            btn.title = '加約束';
+            btn.addEventListener('click', () => onEdgeClick(r, c, r+1, c));
+            container.appendChild(btn);
+          }
+        }
+      }
+    }
+  }
+}
+
+// Detect violations on current board (only conflicts with already-placed cells)
+function findViolations(board, constraints) {
+  const v = Array.from({length: SIZE}, () => Array(SIZE).fill(false));
+  // 3-in-a-row
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c <= SIZE - 3; c++) {
+      const x = board[r][c];
+      if (x !== EMPTY && x === board[r][c+1] && x === board[r][c+2]) {
+        v[r][c] = v[r][c+1] = v[r][c+2] = true;
+      }
+    }
+  }
+  for (let c = 0; c < SIZE; c++) {
+    for (let r = 0; r <= SIZE - 3; r++) {
+      const x = board[r][c];
+      if (x !== EMPTY && x === board[r+1][c] && x === board[r+2][c]) {
+        v[r][c] = v[r+1][c] = v[r+2][c] = true;
+      }
+    }
+  }
+  // Row/col exceeded count
+  for (let r = 0; r < SIZE; r++) {
+    let y = 0, b = 0;
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] === YELLOW) y++; else if (board[r][c] === BLUE) b++;
+    }
+    if (y > 3 || b > 3) {
+      const tooMany = y > 3 ? YELLOW : BLUE;
+      for (let c = 0; c < SIZE; c++) if (board[r][c] === tooMany) v[r][c] = true;
+    }
+  }
+  for (let c = 0; c < SIZE; c++) {
+    let y = 0, b = 0;
+    for (let r = 0; r < SIZE; r++) {
+      if (board[r][c] === YELLOW) y++; else if (board[r][c] === BLUE) b++;
+    }
+    if (y > 3 || b > 3) {
+      const tooMany = y > 3 ? YELLOW : BLUE;
+      for (let r = 0; r < SIZE; r++) if (board[r][c] === tooMany) v[r][c] = true;
+    }
+  }
+  // Constraints
+  for (const con of constraints) {
+    const v1 = board[con.r1][con.c1], v2 = board[con.r2][con.c2];
+    if (v1 !== EMPTY && v2 !== EMPTY) {
+      if ((con.type === '=' && v1 !== v2) || (con.type === 'X' && v1 === v2)) {
+        v[con.r1][con.c1] = true; v[con.r2][con.c2] = true;
+      }
+    }
+  }
+  return v;
+}
+
+// ============================================================
+// 9. GAME CONTROLLER
+// ============================================================
+const Game = {
+  puzzle: null, source: 'generated', board: null, locked: null,
+  history: [], startTime: null, elapsedMs: 0, timerId: null, usedSolve: false,
+  finished: false,
+
+  // Save current unfinished game as an "incomplete" record (called when starting a new game over an unfinished one)
+  saveUnfinishedAsRecord() {
+    if (!this.puzzle || this.finished) return;
+    if (this.history.length === 0 && this.elapsedMs < 1000) return; // Never touched, skip
+    Storage.addRecord({
+      source: this.source,
+      puzzleName: this.puzzle.name || null,
+      difficulty: this.puzzle.difficulty || 'custom',
+      durationMs: this.elapsedMs,
+      completed: false,
+      usedSolve: false,
+      completedAt: Date.now(),
+      puzzle: this.snapshotPuzzle()
+    });
+  },
+  snapshotPuzzle() {
+    return {
+      prefilled: this.puzzle.prefilled,
+      constraints: this.puzzle.constraints,
+      solution: this.puzzle.solution,
+      name: this.puzzle.name,
+      difficulty: this.puzzle.difficulty
+    };
+  },
+
+  start(puzzle, source = 'generated') {
+    this.saveUnfinishedAsRecord();
+    this.puzzle = puzzle; this.source = source;
+    this.locked = Array.from({length: SIZE}, () => Array(SIZE).fill(false));
+    this.board = makeBoard(puzzle.prefilled);
+    for (const p of puzzle.prefilled) this.locked[p.r][p.c] = true;
+    this.history = []; this.startTime = null; this.elapsedMs = 0;
+    this.usedSolve = false; this.finished = false;
+    this.stopTimer();
+    this.updateTimer();
+    this.render();
+    this.setStatus('');
+    this.persist();
+  },
+  click(r, c) {
+    if (this.finished || this.locked[r][c]) return;
+    if (this.startTime === null) {
+      this.startTime = performance.now();
+      this.startTimer();
+    }
+    this.history.push(cloneBoard(this.board));
+    if (this.history.length > 200) this.history.shift();
+    const cur = this.board[r][c];
+    this.board[r][c] = cur === EMPTY ? YELLOW : (cur === YELLOW ? BLUE : EMPTY);
+    this.render();
+    this.persist();
+    this.checkComplete();
+  },
+  undo() {
+    if (this.finished) return;
+    if (this.history.length === 0) return;
+    this.board = this.history.pop();
+    this.render();
+    this.persist();
+  },
+  reset() {
+    if (!this.puzzle) return;
+    showModal({
+      title: '重設',
+      body: '確定要清空所有自填格子嗎？（計時不會重置）',
+      onOk: () => {
+        this.board = makeBoard(this.puzzle.prefilled);
+        this.history = []; this.finished = false;
+        this.render(); this.setStatus('');
+        this.persist();
+      }
+    });
+  },
+  solve() {
+    if (!this.puzzle) return;
+    showModal({
+      title: '查看答案',
+      body: '直接顯示完整答案？這次紀錄會標記為「已查看解答」。',
+      onOk: () => {
+        this.usedSolve = true;
+        this.board = cloneBoard(this.puzzle.solution);
+        this.render();
+        this.checkComplete();
+      }
+    });
+  },
+  checkComplete() {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (this.board[r][c] !== this.puzzle.solution[r][c]) return;
+      }
+    }
+    this.stopTimer();
+    this.finished = true;
+    Storage.addRecord({
+      source: this.source,
+      puzzleName: this.puzzle.name || null,
+      difficulty: this.puzzle.difficulty || 'custom',
+      durationMs: this.elapsedMs,
+      completed: true,
+      usedSolve: this.usedSolve,
+      completedAt: Date.now(),
+      puzzle: this.snapshotPuzzle()
+    });
+    Storage.clearCurrentGame();
+    const msg = this.usedSolve
+      ? `已顯示答案（用時 ${formatTime(this.elapsedMs)}）`
+      : `🎉 完成！耗時 ${formatTime(this.elapsedMs)}`;
+    this.setStatus(msg, this.usedSolve ? 'warn' : 'ok');
+    if (window.RecordsView) RecordsView.refresh();
+  },
+  // Persist current state so we can resume after browser restart
+  persist() {
+    if (!this.puzzle || this.finished) return;
+    Storage.saveCurrentGame({
+      puzzle: this.snapshotPuzzle(),
+      source: this.source,
+      board: this.board,
+      history: this.history,
+      elapsedMs: this.elapsedMs,
+      timerRunning: this.startTime !== null,
+      usedSolve: this.usedSolve
+    });
+  },
+  // Restore from saved state on page load. Returns true if restored.
+  restore() {
+    const state = Storage.loadCurrentGame();
+    if (!state || !state.puzzle) return false;
+    this.puzzle = state.puzzle;
+    this.source = state.source || 'generated';
+    this.locked = Array.from({length: SIZE}, () => Array(SIZE).fill(false));
+    for (const p of state.puzzle.prefilled) this.locked[p.r][p.c] = true;
+    this.board = state.board || makeBoard(state.puzzle.prefilled);
+    this.history = state.history || [];
+    this.elapsedMs = state.elapsedMs || 0;
+    this.usedSolve = state.usedSolve || false;
+    this.finished = false;
+    if (state.timerRunning) {
+      this.startTime = performance.now() - this.elapsedMs;
+      this.startTimer();
+    } else {
+      this.startTime = null;
+    }
+    this.updateTimer();
+    this.render();
+    if (this.elapsedMs > 0) {
+      this.setStatus(`已恢復上一次遊戲（已用時 ${formatTime(this.elapsedMs)}）`, '');
+    }
+    return true;
+  },
+  startTimer() {
+    if (this.timerId) return;
+    this.timerId = setInterval(() => this.updateTimer(), 200);
+  },
+  stopTimer() {
+    if (this.timerId) { clearInterval(this.timerId); this.timerId = null; }
+    if (this.startTime !== null) this.elapsedMs = performance.now() - this.startTime;
+  },
+  updateTimer() {
+    if (this.startTime !== null && !this.finished) this.elapsedMs = performance.now() - this.startTime;
+    document.getElementById('timer').textContent = formatTime(this.elapsedMs);
+  },
+  setStatus(msg, type) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = type ? 'status-' + type : '';
+  },
+  render() {
+    renderBoard(document.getElementById('game-board'), {
+      board: this.board, locked: this.locked,
+      constraints: this.puzzle.constraints,
+      onCellClick: (r, c) => this.click(r, c)
+    });
+  }
+};
+
+// ============================================================
+// 10. EDITOR CONTROLLER
+// ============================================================
+const Editor = {
+  board: null, constraints: [], mode: 'prefill', conType: '=',
+  init() {
+    this.board = Array.from({length: SIZE}, () => Array(SIZE).fill(EMPTY));
+    this.constraints = [];
+    this.render(); this.setStatus('');
+  },
+  cellClick(r, c, e) {
+    if (this.mode !== 'prefill') return;
+    const cur = this.board[r][c];
+    this.board[r][c] = cur === EMPTY ? YELLOW : (cur === YELLOW ? BLUE : EMPTY);
+    this.render(); this.setStatus('');
+  },
+  cellRight(r, c) {
+    if (this.mode !== 'prefill') return;
+    const cur = this.board[r][c];
+    this.board[r][c] = cur === BLUE ? EMPTY : BLUE;
+    this.render(); this.setStatus('');
+  },
+  edgeClick(r1, c1, r2, c2) {
+    const idx = this.constraints.findIndex(con =>
+      con.r1 === r1 && con.c1 === c1 && con.r2 === r2 && con.c2 === c2
+    );
+    if (idx >= 0) {
+      if (this.constraints[idx].type === this.conType) {
+        this.constraints.splice(idx, 1);
+      } else {
+        this.constraints[idx].type = this.conType;
+      }
+    } else {
+      this.constraints.push({ r1, c1, r2, c2, type: this.conType });
+    }
+    this.render(); this.setStatus('');
+  },
+  validate(showResult = true) {
+    const prefilled = [];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (this.board[r][c] !== EMPTY) prefilled.push({ r, c, color: this.board[r][c] });
+      }
+    }
+    const initial = makeBoard(prefilled);
+    if (!isValidPartial(initial, this.constraints)) {
+      if (showResult) this.setStatus('❌ 預填格已違反規則', 'bad');
+      return null;
+    }
+    const { count, solution } = countSolutions(initial, this.constraints, 2);
+    if (count === 0) {
+      if (showResult) this.setStatus('❌ 無解（沒有任何填法符合所有規則與約束）', 'bad');
+      return null;
+    }
+    if (count >= 2) {
+      if (showResult) this.setStatus('❌ 多解（不唯一） — 請加更多預填或約束', 'bad');
+      return null;
+    }
+    const logic = solveLogically(initial, this.constraints);
+    if (!logic.solved) {
+      if (showResult) this.setStatus('⚠ 唯一解，但需要猜測（不是純邏輯可解）', 'warn');
+      return { prefilled, solution, logical: false };
+    }
+    if (showResult) this.setStatus('✅ 唯一解 + 純邏輯可解！可以儲存', 'ok');
+    return { prefilled, solution, logical: true };
+  },
+  clear() {
+    showModal({
+      title: '清空',
+      body: '確定清空整個編輯器棋盤與所有約束？',
+      onOk: () => this.init()
+    });
+  },
+  save() {
+    const result = this.validate(false);
+    if (!result) {
+      this.setStatus('❌ 必須是唯一解才能儲存', 'bad');
+      return;
+    }
+    const proceed = (name) => {
+      if (!name) return;
+      const puzzle = {
+        id: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+        name,
+        prefilled: result.prefilled,
+        constraints: [...this.constraints],
+        solution: result.solution,
+        logical: result.logical,
+        createdAt: Date.now()
+      };
+      Storage.addCustomPuzzle(puzzle);
+      this.setStatus(`✅ 已儲存「${name}」到自製謎題庫`, 'ok');
+      if (window.LibraryView) LibraryView.refresh();
+    };
+    showModal({
+      title: '儲存謎題',
+      body: '為這個謎題取個名字：',
+      input: true, defaultValue: '我的謎題 ' + new Date().toLocaleDateString(),
+      onOk: proceed
+    });
+  },
+  testPlay() {
+    const result = this.validate(false);
+    if (!result) {
+      this.setStatus('❌ 必須是唯一解才能試玩', 'bad');
+      return;
+    }
+    const puzzle = {
+      name: '（試玩）',
+      prefilled: result.prefilled,
+      constraints: [...this.constraints],
+      solution: result.solution,
+      difficulty: 'custom'
+    };
+    Game.start(puzzle, 'custom-test');
+    switchTab('game');
+  },
+  setStatus(msg, type) {
+    const el = document.getElementById('ed-status');
+    el.textContent = msg;
+    el.className = type ? 'status-' + type : '';
+  },
+  render() {
+    renderBoard(document.getElementById('editor-board'), {
+      board: this.board,
+      constraints: this.constraints,
+      editorMode: this.mode,
+      onCellClick: (r, c, e) => this.cellClick(r, c, e),
+      onCellContext: (r, c) => this.cellRight(r, c),
+      onEdgeClick: (r1, c1, r2, c2) => this.edgeClick(r1, c1, r2, c2)
+    });
+  }
+};
+
+// ============================================================
+// 11. RECORDS VIEW
+// ============================================================
+const RecordsView = {
+  refresh() {
+    const records = Storage.getRecords();
+    const stats = document.getElementById('records-stats');
+    const list = document.getElementById('records-list');
+
+    // Stats
+    const total = records.length;
+    const completed = records.filter(r => r.completed).length;
+    const pure = records.filter(r => r.completed && !r.usedSolve);
+    const byDiff = {};
+    for (const r of pure) {
+      if (!byDiff[r.difficulty]) byDiff[r.difficulty] = [];
+      byDiff[r.difficulty].push(r.durationMs);
+    }
+    const fmtAvg = arr => arr.length ? formatTime(arr.reduce((a,b)=>a+b,0) / arr.length) : '—';
+    const fmtMin = arr => arr.length ? formatTime(Math.min(...arr)) : '—';
+    const labelMap = { easy: '簡單', medium: '中等', hard: '困難', custom: '自製' };
+    let statsHTML = `
+      <div class="stats-row">
+        <div class="stat-card"><div class="label">總場次</div><div class="value">${total}</div></div>
+        <div class="stat-card"><div class="label">完成數</div><div class="value">${completed}</div></div>
+        <div class="stat-card"><div class="label">純邏輯通關</div><div class="value">${pure.length}</div></div>
+      </div>
+    `;
+    if (Object.keys(byDiff).length) {
+      statsHTML += '<div class="stats-row">';
+      for (const [diff, times] of Object.entries(byDiff)) {
+        statsHTML += `<div class="stat-card">
+          <div class="label">${labelMap[diff] || diff} 最佳/平均</div>
+          <div class="value" style="font-size:1.05rem;">${fmtMin(times)} / ${fmtAvg(times)}</div>
+        </div>`;
+      }
+      statsHTML += '</div>';
+    }
+    stats.innerHTML = statsHTML;
+
+    // List
+    if (records.length === 0) {
+      list.innerHTML = '<div class="empty">尚無紀錄。完成一局後就會顯示在這裡。</div>';
+      return;
+    }
+    let html = '<table class="records"><thead><tr><th>時間</th><th>難度</th><th>來源</th><th>用時</th><th>狀態</th><th></th></tr></thead><tbody>';
+    for (const r of records.slice(0, 100)) {
+      const date = new Date(r.completedAt);
+      const dateStr = `${date.getMonth()+1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+      const sourceMap = { generated: '🎲生成', custom: '✏自製', 'custom-test': '🧪試玩' };
+      const status = r.completed
+        ? (r.usedSolve ? '<span style="color:#d97706">看過解答</span>' : '<span style="color:#16a34a">✓ 純邏輯通關</span>')
+        : '<span style="color:#6b6b6b">未完成</span>';
+      const replayBtn = r.puzzle
+        ? `<button class="btn" data-replay="${r.id}" style="padding:0.3rem 0.6rem;font-size:0.85rem;">▶ 再玩</button>`
+        : '';
+      html += `<tr class="${r.completed ? 'completed' : 'incomplete'}">
+        <td>${dateStr}</td>
+        <td>${labelMap[r.difficulty] || r.difficulty}${r.puzzleName ? ` · ${r.puzzleName}` : ''}</td>
+        <td>${sourceMap[r.source] || r.source}</td>
+        <td>${formatTime(r.durationMs)}</td>
+        <td>${status}</td>
+        <td>${replayBtn}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    list.innerHTML = html;
+    // Wire up replay buttons
+    list.querySelectorAll('button[data-replay]').forEach(btn => {
+      btn.onclick = () => {
+        const rec = Storage.getRecord(btn.dataset.replay);
+        if (rec && rec.puzzle) {
+          Game.start(rec.puzzle, rec.source);
+          switchTab('game');
+        }
+      };
+    });
+  }
+};
+window.RecordsView = RecordsView;
+
+// ============================================================
+// 12. LIBRARY VIEW
+// ============================================================
+const LibraryView = {
+  refresh() {
+    const list = document.getElementById('library-list');
+    const puzzles = Storage.getCustomPuzzles();
+    if (puzzles.length === 0) {
+      list.innerHTML = '<div class="empty">尚無自製謎題。到「編輯器」分頁建立你的第一個謎題吧！</div>';
+      return;
+    }
+    list.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'puzzle-list';
+    for (const p of puzzles) {
+      const item = document.createElement('div');
+      item.className = 'puzzle-item';
+      const date = new Date(p.createdAt);
+      const dateStr = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()}`;
+      item.innerHTML = `
+        <div class="info">
+          <div class="name">${p.name}</div>
+          <div class="meta">${dateStr} · 預填 ${p.prefilled.length} · 約束 ${p.constraints.length} ${p.logical === false ? '· ⚠需猜測' : ''}</div>
+        </div>
+      `;
+      const btnRow = document.createElement('div');
+      btnRow.style.display = 'flex'; btnRow.style.gap = '0.4rem';
+      const playBtn = document.createElement('button');
+      playBtn.className = 'btn primary'; playBtn.textContent = '▶ 開始';
+      playBtn.onclick = () => {
+        Game.start({
+          ...p,
+          difficulty: 'custom'
+        }, 'custom');
+        switchTab('game');
+      };
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn danger'; delBtn.textContent = '🗑';
+      delBtn.onclick = () => {
+        showModal({
+          title: '刪除謎題',
+          body: `確定刪除「${p.name}」？`,
+          onOk: () => { Storage.deleteCustomPuzzle(p.id); this.refresh(); }
+        });
+      };
+      btnRow.appendChild(playBtn); btnRow.appendChild(delBtn);
+      item.appendChild(btnRow);
+      wrap.appendChild(item);
+    }
+    list.appendChild(wrap);
+  }
+};
+window.LibraryView = LibraryView;
+
+// ============================================================
+// 13. MAIN / TAB SWITCHING
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('nav button').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.id === name + '-tab');
+  });
+  if (name === 'records') RecordsView.refresh();
+  if (name === 'library') LibraryView.refresh();
+}
+
+document.getElementById('nav').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (btn && btn.dataset.tab) switchTab(btn.dataset.tab);
+});
+
+// New game button
+document.getElementById('new-game').addEventListener('click', () => {
+  const diff = document.getElementById('difficulty').value;
+  Storage.setSetting('lastDifficulty', diff);
+  const btn = document.getElementById('new-game');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>生成中...';
+  // Use setTimeout to let UI update before heavy computation
+  setTimeout(() => {
+    try {
+      const puzzle = generate(diff);
+      Game.start(puzzle, 'generated');
+    } catch (e) {
+      console.error(e);
+      Game.setStatus('生成失敗，請再試一次', 'bad');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🎲 新遊戲';
+    }
+  }, 30);
+});
+
+document.getElementById('undo').addEventListener('click', () => Game.undo());
+document.getElementById('reset').addEventListener('click', () => Game.reset());
+document.getElementById('solve').addEventListener('click', () => Game.solve());
+
+// Editor controls
+document.querySelectorAll('input[name="ed-mode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    Editor.mode = e.target.value;
+    Editor.render();
+  });
+});
+document.getElementById('ed-con-type').addEventListener('change', e => {
+  Editor.conType = e.target.value;
+});
+document.getElementById('ed-validate').addEventListener('click', () => Editor.validate());
+document.getElementById('ed-clear').addEventListener('click', () => Editor.clear());
+document.getElementById('ed-save').addEventListener('click', () => Editor.save());
+document.getElementById('ed-test-play').addEventListener('click', () => Editor.testPlay());
+document.getElementById('clear-records').addEventListener('click', () => {
+  showModal({
+    title: '清除所有紀錄',
+    body: '這個動作無法復原。確定刪除所有遊玩紀錄？',
+    onOk: () => { Storage.clearRecords(); RecordsView.refresh(); }
+  });
+});
+
+// Disable right-click context menu on editor board (we use right-click for blue)
+document.getElementById('editor-board').addEventListener('contextmenu', e => e.preventDefault());
+
+// Initial setup
+const lastDiff = 'hard';
+document.getElementById('difficulty').value = lastDiff;
+Editor.init();
+// Try to restore a saved game; if none, start a new one
+setTimeout(() => {
+  if (!Game.restore()) {
+    const puzzle = generate(lastDiff);
+    Game.start(puzzle, 'generated');
+  }
+}, 50);
+
+// ============================================================
+// 14. DEBUG HELPERS (exposed on window)
+// ============================================================
+window.tango = {
+  generate, countSolutions, solveLogically, isValidPartial,
+  test(n = 20, difficulty = 'medium') {
+    let okU = 0, okL = 0;
+    const lines = [];
+    for (let i = 0; i < n; i++) {
+      const p = generate(difficulty);
+      const initial = makeBoard(p.prefilled);
+      const u = countSolutions(initial, p.constraints, 2).count === 1;
+      const l = solveLogically(initial, p.constraints).solved;
+      if (u) okU++;
+      if (l) okL++;
+      lines.push(`#${i+1} [${difficulty}]: unique=${u} logical=${l} hints=${p.prefilled.length}+${p.constraints.length}=${p.prefilled.length+p.constraints.length}`);
+    }
+    lines.push(`\nResult [${difficulty}]: ${okU}/${n} unique, ${okL}/${n} logical`);
+    return { okU, okL, n, lines };
+  }
+};
+
+// Auto-run validation if URL has ?test
+(function() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('test')) return;
+  const n = parseInt(params.get('test')) || 10;
+  document.body.innerHTML = '<pre id="test-out" style="font-family:monospace;font-size:13px;padding:1rem;"></pre>';
+  const out = document.getElementById('test-out');
+  const log = (s) => { out.textContent += s + '\n'; };
+  const t0 = performance.now();
+  const allLines = [];
+  let totalU = 0, totalL = 0, totalN = 0;
+  for (const diff of ['easy', 'medium', 'hard']) {
+    const r = window.tango.test(n, diff);
+    r.lines.forEach(l => log(l));
+    log('');
+    totalU += r.okU; totalL += r.okL; totalN += r.n;
+  }
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+  log(`=== TOTAL: ${totalU}/${totalN} unique, ${totalL}/${totalN} logical (in ${elapsed}s) ===`);
+  log(totalU === totalN && totalL === totalN ? 'PASS ALL' : 'FAILURES DETECTED');
+  document.title = totalU === totalN && totalL === totalN ? 'PASS' : 'FAIL';
+})();
+</script>
+</body>
+</html>
